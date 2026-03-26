@@ -559,65 +559,67 @@
   const DISCOVERY_DOC = 'https://www.googleapis.com/discovery/v1/apis/drive/v3/rest';
 
   async function loadDriveFolder(folderUrl) {
-    const folderId = extractFolderId(folderUrl);
-    if (!folderId) {
-      alert('Invalid Google Drive folder URL');
+  const folderId = extractFolderId(folderUrl);
+  if (!folderId) {
+    alert('Invalid Google Drive folder URL');
+    return;
+  }
+
+  const loadingDiv = document.createElement('div');
+  loadingDiv.className = 'loading';
+  loadingDiv.textContent = '📂 Loading folder contents...';
+  tracksContainer.prepend(loadingDiv);
+
+  try {
+    // Replace this URL with your Apps Script web app URL
+    const scriptUrl = 'https://script.google.com/macros/s/AKfycbz2B2xYbXEv_O_dS_aE49zZ-0_t3KZWcSBUCIESx7tJYGSXhZwZLn_5gx1jS8fzLpcBGQ/exec';
+    const response = await fetch(`${scriptUrl}?folderId=${folderId}`);
+    const data = await response.json();
+
+    if (data.error) {
+      throw new Error(data.error);
+    }
+
+    if (!data || data.length === 0) {
+      alert('No media files found in this folder.');
       return;
     }
 
-    // Show loading
-    const loadingDiv = document.createElement('div');
-    loadingDiv.className = 'loading';
-    loadingDiv.textContent = '📂 Loading folder contents...';
-    tracksContainer.prepend(loadingDiv);
+    clearAllTracks();
 
-    try {
-      // Use Google Drive API to list files (requires API key)
-      const url = `https://www.googleapis.com/drive/v3/files?q='${folderId}'+in+parents+and+trashed=false+and+(mimeType+contains+'video/'+or+mimeType+contains+'audio/')&fields=files(id,name,mimeType)&key=${API_KEY}`;
-      const response = await fetch(url);
-      const data = await response.json();
+    let videoAssigned = false;
+    data.forEach(file => {
+      const isVideo = file.mimeType.startsWith('video/');
+      const directUrl = `https://drive.google.com/uc?export=download&id=${file.id}`;
+      const streamUrl = CORS_PROXY + directUrl;
 
-      if (!data.files || data.files.length === 0) {
-        alert('No media files found in this folder.');
-        return;
+      if (isVideo && !videoAssigned) {
+        mainVideo.src = streamUrl;
+        const track = addTrackFromMediaElement(mainVideo, file, true, file.name);
+        tracks.push(track);
+        videoTrack = track;
+        videoAssigned = true;
+      } else {
+        const audioEl = document.createElement('audio');
+        audioEl.preload = 'metadata';
+        audioEl.style.display = 'none';
+        document.body.appendChild(audioEl);
+        audioEl.src = streamUrl;
+        const track = addTrackFromMediaElement(audioEl, file, false, file.name);
+        tracks.push(track);
       }
+    });
 
-      clearAllTracks();
+    applyMuteForAll();
+    updateMuteButtonStyles();
 
-      let videoAssigned = false;
-      data.files.forEach(file => {
-        const isVideo = file.mimeType.startsWith('video/');
-        const directUrl = `https://drive.google.com/uc?export=download&id=${file.id}`;
-        const streamUrl = CORS_PROXY + directUrl;
-
-        if (isVideo && !videoAssigned) {
-          // First video becomes master
-          mainVideo.src = streamUrl;
-          const track = addTrackFromMediaElement(mainVideo, file, true, file.name);
-          tracks.push(track);
-          videoTrack = track;
-          videoAssigned = true;
-        } else {
-          const audioEl = document.createElement('audio');
-          audioEl.preload = 'metadata';
-          audioEl.style.display = 'none';
-          document.body.appendChild(audioEl);
-          audioEl.src = streamUrl;
-          const track = addTrackFromMediaElement(audioEl, file, false, file.name);
-          tracks.push(track);
-        }
-      });
-
-      applyMuteForAll();
-      updateMuteButtonStyles();
-
-    } catch (error) {
-      console.error(error);
-      alert('Error loading folder: ' + error.message + '\n\nMake sure you have a valid API key and the folder is public.');
-    } finally {
-      loadingDiv.remove();
-    }
+  } catch (error) {
+    console.error(error);
+    alert('Error loading folder: ' + error.message);
+  } finally {
+    loadingDiv.remove();
   }
+}
 
   // ------------------------------------------------------------------
   // Event listeners
